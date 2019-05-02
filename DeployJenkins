@@ -3,18 +3,11 @@
 /*
 * Jenkins shared library
 */
-@Library('utils@v1.0.1') _
-@Library('ecs-jenkins-lib@v1.0.0') awsECS
-@Library('DevOps') ops
+@Library('major')_
 
 // Pipeline
 pipeline {
     agent any
-
-    // Parameters to be passed
-    parameters {
-        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Choose an environment.')
-    }
 
     // Pipeline options
     options {
@@ -94,15 +87,8 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    if (env.IS_GLOBAL == "true" || env.IS_CHINA == "true" || env.IS_RUSSIA == "true") {
                         log.info("Executing Stage 2: Deploy")
-                        if (env.IS_GLOBAL == "true") {
-                            log.info("Starting deployment for Global audience for ${env.ENVIRONMENT}")
-
                             /* Logic starts here */
-
-                            if (env.IS_DEV_ENV == "true") {
-
                                 def service = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}-svc"
                                 def taskFamily = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}"
                                 def taskName = "icm-${env.APPLICATION}-${env.BRANCH}"
@@ -182,94 +168,12 @@ pipeline {
                                 }
 
 
-                            } else {
-
-                                // Deploy to ECS cluster
-                                log.info("Deploying to ECS cluster...")
-                                ecs.deploy("${env.CLUSTER_NAME}", "${env.SERVICE_NAME}", "${env.TASK_FAMILY}", "${env.ECS_IMAGE_TO_DEPLOY}", "${env.ICM_AWS_DEFAULT_REGION}", true)
-                                log.success("Deployed to ECS cluster")
-
-                                // Cloudfront cache invalidation
-                                log.info("Invalidating cloudfront cache")
-                                sh """
-                                /usr/local/bin/aws cloudfront create-invalidation \
-                                    --distribution-id=${env.CF_DIST_ID} \
-                                    --paths "/*"
-                                """
-                                log.success("Cloudfront cache invalidation completed")
-
                             }
                             /* Logic ends here */
 
                             log.success("Deployment completed for global audience")
                         }
-                        if (env.IS_CHINA == "true" && env.ENVIRONMENT == "prod") {
-                            log.info("Starting deployment for China audience")
-
-                            /* Logic starts here */
-
-                            def remote = [:]
-                            remote.name = "k8-master"
-                            remote.host = "${env.KUBERNETES_MASTER_HOST}"
-                            remote.allowAnyHosts = true
-                            def command = "/usr/bin/kubectl -n production set image deployment www2-deploy www2=${env.DOCKER_HUB_IMAGE_TO_DEPLOY}"
-
-                            log.info("Deploying to kubernetes cluster in Aliyun")
-
-                            withCredentials([sshUserPrivateKey(credentialsId: env.ALIYUN_CRED_ID, keyFileVariable: 'identity', passphraseVariable: '', usernameVariable: 'userName')]) {
-                                remote.user = userName
-                                remote.identityFile = identity
-                                stage("Deploy to Aliyun") {
-                                    sshCommand remote: remote, command: command
-                                }
-                            }
-
-                            log.success("Deployed to kubernetes cluster in Aliyun")
-
-                            /* Logic ends here */
-
-                            log.success("Deployment completed for China audience")
-
-                        }
-                        if (env.IS_RUSSIA == "true" && env.ENVIRONMENT == "prod") {
-                            log.info("Starting deployment for Russia audience")
-
-                            /* Logic starts here */
-
-                            def remote = [:]
-                            remote.name = "croc-cloud"
-                            remote.host = "${env.CROC_SSH_HOST}"
-                            remote.allowAnyHosts = true
-                            def command = """
-                                docker pull ${env.DOCKER_HUB_IMAGE_TO_DEPLOY} && \
-                                    IMAGE_TO_DEPLOY=${env.DOCKER_HUB_IMAGE_TO_DEPLOY} \
-                                    docker stack deploy \
-                                    --compose-file ${env.CROC_DOCKER_COMPOSE_FILE} icm-web
-                            """
-
-                            log.info("Deploying to CROC cloud")
-
-                            withCredentials([sshUserPrivateKey(credentialsId: env.CROC_SSH_ID, keyFileVariable: 'identity', passphraseVariable: '', usernameVariable: 'userName')]) {
-                                remote.user = userName
-                                remote.identityFile = identity
-                                stage("Deploy to CROC cloud") {
-                                    sshCommand remote: remote, command: command
-                                }
-                            }
-
-                            /* Logic ends here */
-
-                            log.success("Deployment completed for Russia audience")
-
-                        }
-                        log.success("Completed Stage 2: Deploy")
-                    } else {
-                        log.info("No platform selected, Skipping deploy.")
-                    }
-                }
-            }
-        }
-    }
+                        
 
     // Post actions
     post {
@@ -294,15 +198,8 @@ pipeline {
                 log.success("#################################################")
                 log.success('Build process completed successfully.')
                 log.success("#################################################")
-                if (env.IS_DEV_ENV == "true") {
-                    log.success("Endpoint: ${env.SITE_HOST}")
-                    helper.notifySlack("good", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was successful.\n URL: ${env.SITE_HOST}")
-                    log.success("#################################################")
-                } else {
-                    helper.notifySlack("good", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was successful.")
                 }
-            }
         }
-    }
+   
 }
 
