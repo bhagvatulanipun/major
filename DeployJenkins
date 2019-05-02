@@ -19,10 +19,6 @@ pipeline {
     environment {
 
         // Application specific parameters
-        APPLICATION = "www2"
-        AWS_VERSION = "${env.TAG}"
-        DOCKER_HUB_VERSION = "${env.APPLICATION}_${env.TAG}"
-        BRANCH = "${helper.parseBranchFromTag("${env.AWS_VERSION}")}"
         REGION = "us-east-1"
         // AWS specific parameters
         CLUSTER_NAME = "major-cluster"
