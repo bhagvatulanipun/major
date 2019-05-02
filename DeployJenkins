@@ -23,43 +23,21 @@ pipeline {
         AWS_VERSION = "${env.TAG}"
         DOCKER_HUB_VERSION = "${env.APPLICATION}_${env.TAG}"
         BRANCH = "${helper.parseBranchFromTag("${env.AWS_VERSION}")}"
-
-        // Platform on which application needs to be deployed
-        boolean IS_GLOBAL = "${params.PLATFORM}".contains("GLOBAL")
-        boolean IS_CHINA = "${params.PLATFORM}".contains("CHINA")
-        boolean IS_RUSSIA = "${params.PLATFORM}".contains("RUSSIA")
-
-        boolean IS_DEV_ENV = "${params.ENVIRONMENT}".contains("dev")
-
+        REGION = "us-east-1"
         // AWS specific parameters
-        CLUSTER_NAME = "icm-${params.ENVIRONMENT}-cluster"
-        SERVICE_NAME = "icm-${params.ENVIRONMENT}-${env.APPLICATION}-service"
-        TASK_FAMILY = "icm-${params.ENVIRONMENT}-${env.APPLICATION}"
-        ECS_IMAGE_TO_DEPLOY = "${env.ICM_ECR_REPO_URL}/${APPLICATION}:${env.AWS_VERSION}"
-        CF_DIST_ID = "${"${env.ENVIRONMENT}" == "staging" ? "E2GQ48H0NF6MKY" : "E2HP5IQZZ187QJ"}"
+        CLUSTER_NAME = "major-cluster"
+        SERVICE_NAME = "major-app-svc"
+        TASK_FAMILY = "major-app-td"
+        ECS_IMAGE_TO_DEPLOY = "254110345317.dkr.ecr.us-east-1.amazonaws.com/major:app_v4"
 
-        // Docker hub specific parameters
-        DOCKER_HUB_REPO_ENDPOINT = "naryanjoshi/icm"
-        DOCKER_HUB_IMAGE_TO_DEPLOY = "${env.DOCKER_HUB_REPO_ENDPOINT}:${env.APPLICATION}_${env.AWS_VERSION}"
-
-        // Aliyun specific parameters
-        KUBERNETES_MASTER_HOST = "k8-master.icm"
-        ALIYUN_CRED_ID = "jenkins"
-
-        // RUSSIA's CROC specific config
-        CROC_SSH_USER = "ec2-user"
-        CROC_SSH_HOST = "217.73.63.210"
-        CROC_DOCKER_COMPOSE_FILE = "/home/ec2-user/www2/docker-compose.yml"
-        CROC_SSH_ID = "CROC_CLOUD"
 
         // dev config
-        VPC = "vpc-bb8321d3"
+        VPC = "vpc-00e339dc940810ab5"
         ALB_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:loadbalancer/app/icm-dev-lb/02aa38573ac93bed"
         DEV_ALB_HTTP_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/2c8b1efb4e0c4dc2"
         DEV_ALB_HTTPS_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/f777b76b6ff73aae"
-        SITE_HOST = "${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}.internal.icmarkets.com".toLowerCase()
-        LOAD_BALANCER = "icm-${env.ENVIRONMENT}-lb"
-        TARGET_GROUP = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}"
+        LOAD_BALANCER = "major-app-lb"
+        TARGET_GROUP = "major-app-tg"
 
     }
 
@@ -89,22 +67,22 @@ pipeline {
                 script {
                         log.info("Executing Stage 2: Deploy")
                             /* Logic starts here */
-                                def service = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}-svc"
-                                def taskFamily = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}"
-                                def taskName = "icm-${env.APPLICATION}-${env.BRANCH}"
+                                def service = "major-app-svc"
+                                def taskFamily = "major-app-td"
+                                def taskName = "major-app-td"
 
-                                def isServiceExists = awsHelper.isECSServiceExists("${env.CLUSTER_NAME}", service, "${env.ICM_AWS_DEFAULT_REGION}")
+                                def isServiceExists = awsHelper.isECSServiceExists("${env.CLUSTER_NAME}", service, "${REGION}")
 
                                 if (isServiceExists == 0) {
                                     log.info("Service already exists, No need to create stack.")
                                     log.info("Deploying now...")
-                                    ecs.deploy("${env.CLUSTER_NAME}", service, taskFamily, "${env.ECS_IMAGE_TO_DEPLOY}", "${env.ICM_AWS_DEFAULT_REGION}", true)
+                                    ecs.deploy("${env.CLUSTER_NAME}", service, taskFamily, "${env.ECS_IMAGE_TO_DEPLOY}", "${REGION}", true)
                                     log.success("Deployment done.")
                                 } else {
                                     log.info("New branch setup: Creating task definition now")
 
                                     def isTaskDefCreated = awsHelper.registerTaskDefinition(taskFamily, taskName,
-                                            128, "${env.ECS_IMAGE_TO_DEPLOY}", "www2", 8080, "${env.ICM_AWS_DEFAULT_REGION}")
+                                            512, "${env.ECS_IMAGE_TO_DEPLOY}", "1", 80, "${REGION}")
 
                                     if (isTaskDefCreated != 0) {
                                         currentBuild.result = 'FAILED'
@@ -114,8 +92,8 @@ pipeline {
                                     log.success("TaskDefinition created successfully.")
                                     log.info("Creating TargetGroup now.")
 
-                                    def tgArn = awsHelper.createTargetGroup("${env.TARGET_GROUP}", "${env.VPC}", 8080,
-                                            "/health", 15, 2, 2, 200, "${env.ICM_AWS_DEFAULT_REGION}")
+                                    def tgArn = awsHelper.createTargetGroup("${env.TARGET_GROUP}", "${env.VPC}", 80,
+                                            "/", 15, 2, 2, 200, "${REGION}")
 
                                     if (tgArn == "") {
                                         currentBuild.result = 'FAILED'
@@ -125,7 +103,7 @@ pipeline {
                                     log.success("TargetGroup created successfully.")
                                     log.info("Modifying TG attributes")
 
-                                    def isModifiedTgAttr = awsHelper.modifyTargetGroupAttr("${tgArn}", 30, "${env.ICM_AWS_DEFAULT_REGION}")
+                                    def isModifiedTgAttr = awsHelper.modifyTargetGroupAttr("${tgArn}", 30, "${REGION}")
 
                                     if (isModifiedTgAttr != 0) {
                                         currentBuild.result = 'FAILED'
@@ -135,9 +113,9 @@ pipeline {
                                     log.success("TargetGroup attributes modified successfully.")
                                     log.info("Creating LB listener now.")
 
-                                    def priority = awsHelper.getNextALBRulePriority("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${env.ICM_AWS_DEFAULT_REGION}")
+                                    def priority = awsHelper.getNextALBRulePriority("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${REGION}")
 
-                                    def isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${priority}", "${env.SITE_HOST}", "${tgArn}", "${env.ICM_AWS_DEFAULT_REGION}")
+                                    def isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${priority}", "nipun-major.ml", "${tgArn}", "${REGION}")
 
 
                                     if (isListenerRuleCreated != 0) {
@@ -145,7 +123,7 @@ pipeline {
                                         error("Error while creating LB HTTP listener.")
                                     }
 
-                                    isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTPS_LISTENER_ARN}", "${priority}", "${env.SITE_HOST}", "${tgArn}", "${env.ICM_AWS_DEFAULT_REGION}")
+                                    isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTPS_LISTENER_ARN}", "${priority}", "${nipun-major.ml}", "${tgArn}", "${REGION}")
 
                                     if (isListenerRuleCreated != 0) {
                                         currentBuild.result = 'FAILED'
@@ -156,14 +134,14 @@ pipeline {
                                     log.info("Creating service now.")
 
                                     def isServiceCreated = awsHelper.createECSService(service, "${env.CLUSTER_NAME}", taskFamily,
-                                            1, "${tgArn}", taskName, 8080, "${env.ICM_AWS_DEFAULT_REGION}")
+                                            1, "${tgArn}", taskName, 80, "${REGION}")
 
                                     if (isServiceCreated != 0) {
                                         currentBuild.result = 'FAILED'
                                         error("Error while creating service. Marking the status of build FAILED.")
                                     }
                                     log.success("Service created successfully. Waiting for service to be stable.")
-                                    ecs.wait("${env.CLUSTER_NAME}", service, "${env.ICM_AWS_DEFAULT_REGION}")
+                                    ecs.wait("${env.CLUSTER_NAME}", service, "${REGION}")
                                     log.success("Deployment done.")
                                 }
 
