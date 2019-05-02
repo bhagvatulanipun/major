@@ -1,0 +1,308 @@
+#!groovy
+
+/*
+* Jenkins shared library
+*/
+@Library('utils@v1.0.1') _
+@Library('ecs-jenkins-lib@v1.0.0') awsECS
+@Library('DevOps') ops
+
+// Pipeline
+pipeline {
+    agent any
+
+    // Parameters to be passed
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Choose an environment.')
+    }
+
+    // Pipeline options
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        ansiColor('xterm')
+    }
+
+    // Environment specific parameters to be used throughout the pipeline
+    environment {
+
+        // Application specific parameters
+        APPLICATION = "www2"
+        AWS_VERSION = "${env.TAG}"
+        DOCKER_HUB_VERSION = "${env.APPLICATION}_${env.TAG}"
+        BRANCH = "${helper.parseBranchFromTag("${env.AWS_VERSION}")}"
+
+        // Platform on which application needs to be deployed
+        boolean IS_GLOBAL = "${params.PLATFORM}".contains("GLOBAL")
+        boolean IS_CHINA = "${params.PLATFORM}".contains("CHINA")
+        boolean IS_RUSSIA = "${params.PLATFORM}".contains("RUSSIA")
+
+        boolean IS_DEV_ENV = "${params.ENVIRONMENT}".contains("dev")
+
+        // AWS specific parameters
+        CLUSTER_NAME = "icm-${params.ENVIRONMENT}-cluster"
+        SERVICE_NAME = "icm-${params.ENVIRONMENT}-${env.APPLICATION}-service"
+        TASK_FAMILY = "icm-${params.ENVIRONMENT}-${env.APPLICATION}"
+        ECS_IMAGE_TO_DEPLOY = "${env.ICM_ECR_REPO_URL}/${APPLICATION}:${env.AWS_VERSION}"
+        CF_DIST_ID = "${"${env.ENVIRONMENT}" == "staging" ? "E2GQ48H0NF6MKY" : "E2HP5IQZZ187QJ"}"
+
+        // Docker hub specific parameters
+        DOCKER_HUB_REPO_ENDPOINT = "naryanjoshi/icm"
+        DOCKER_HUB_IMAGE_TO_DEPLOY = "${env.DOCKER_HUB_REPO_ENDPOINT}:${env.APPLICATION}_${env.AWS_VERSION}"
+
+        // Aliyun specific parameters
+        KUBERNETES_MASTER_HOST = "k8-master.icm"
+        ALIYUN_CRED_ID = "jenkins"
+
+        // RUSSIA's CROC specific config
+        CROC_SSH_USER = "ec2-user"
+        CROC_SSH_HOST = "217.73.63.210"
+        CROC_DOCKER_COMPOSE_FILE = "/home/ec2-user/www2/docker-compose.yml"
+        CROC_SSH_ID = "CROC_CLOUD"
+
+        // dev config
+        VPC = "vpc-bb8321d3"
+        ALB_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:loadbalancer/app/icm-dev-lb/02aa38573ac93bed"
+        DEV_ALB_HTTP_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/2c8b1efb4e0c4dc2"
+        DEV_ALB_HTTPS_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/f777b76b6ff73aae"
+        SITE_HOST = "${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}.internal.icmarkets.com".toLowerCase()
+        LOAD_BALANCER = "icm-${env.ENVIRONMENT}-lb"
+        TARGET_GROUP = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}"
+
+    }
+
+    // Pipeline Stages
+    stages {
+
+        // Clean Jenkins workspace
+        stage('Clean workspace') {
+            steps {
+                script {
+                    log.info("Executing Stage 1: Clean workspace")
+
+                    /* Logic starts here */
+
+                    cleanWs()
+
+                    /* Logic ends here */
+
+                    log.success("Completed Stage 1: Clean workspace")
+                }
+            }
+        }
+
+        // Deploy to specified platforms
+        stage('Deploy') {
+            steps {
+                script {
+                    if (env.IS_GLOBAL == "true" || env.IS_CHINA == "true" || env.IS_RUSSIA == "true") {
+                        log.info("Executing Stage 2: Deploy")
+                        if (env.IS_GLOBAL == "true") {
+                            log.info("Starting deployment for Global audience for ${env.ENVIRONMENT}")
+
+                            /* Logic starts here */
+
+                            if (env.IS_DEV_ENV == "true") {
+
+                                def service = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}-svc"
+                                def taskFamily = "icm-${env.ENVIRONMENT}-${env.APPLICATION}-${env.BRANCH}"
+                                def taskName = "icm-${env.APPLICATION}-${env.BRANCH}"
+
+                                def isServiceExists = awsHelper.isECSServiceExists("${env.CLUSTER_NAME}", service, "${env.ICM_AWS_DEFAULT_REGION}")
+
+                                if (isServiceExists == 0) {
+                                    log.info("Service already exists, No need to create stack.")
+                                    log.info("Deploying now...")
+                                    ecs.deploy("${env.CLUSTER_NAME}", service, taskFamily, "${env.ECS_IMAGE_TO_DEPLOY}", "${env.ICM_AWS_DEFAULT_REGION}", true)
+                                    log.success("Deployment done.")
+                                } else {
+                                    log.info("New branch setup: Creating task definition now")
+
+                                    def isTaskDefCreated = awsHelper.registerTaskDefinition(taskFamily, taskName,
+                                            128, "${env.ECS_IMAGE_TO_DEPLOY}", "www2", 8080, "${env.ICM_AWS_DEFAULT_REGION}")
+
+                                    if (isTaskDefCreated != 0) {
+                                        currentBuild.result = 'FAILED'
+                                        error("Error while creating TaskDefinition.")
+                                    }
+
+                                    log.success("TaskDefinition created successfully.")
+                                    log.info("Creating TargetGroup now.")
+
+                                    def tgArn = awsHelper.createTargetGroup("${env.TARGET_GROUP}", "${env.VPC}", 8080,
+                                            "/health", 15, 2, 2, 200, "${env.ICM_AWS_DEFAULT_REGION}")
+
+                                    if (tgArn == "") {
+                                        currentBuild.result = 'FAILED'
+                                        error("Error while creating TargetGroup.")
+                                    }
+
+                                    log.success("TargetGroup created successfully.")
+                                    log.info("Modifying TG attributes")
+
+                                    def isModifiedTgAttr = awsHelper.modifyTargetGroupAttr("${tgArn}", 30, "${env.ICM_AWS_DEFAULT_REGION}")
+
+                                    if (isModifiedTgAttr != 0) {
+                                        currentBuild.result = 'FAILED'
+                                        error("Error while modifying TargetGroup attributes.")
+                                    }
+
+                                    log.success("TargetGroup attributes modified successfully.")
+                                    log.info("Creating LB listener now.")
+
+                                    def priority = awsHelper.getNextALBRulePriority("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${env.ICM_AWS_DEFAULT_REGION}")
+
+                                    def isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${priority}", "${env.SITE_HOST}", "${tgArn}", "${env.ICM_AWS_DEFAULT_REGION}")
+
+
+                                    if (isListenerRuleCreated != 0) {
+                                        currentBuild.result = 'FAILED'
+                                        error("Error while creating LB HTTP listener.")
+                                    }
+
+                                    isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTPS_LISTENER_ARN}", "${priority}", "${env.SITE_HOST}", "${tgArn}", "${env.ICM_AWS_DEFAULT_REGION}")
+
+                                    if (isListenerRuleCreated != 0) {
+                                        currentBuild.result = 'FAILED'
+                                        error("Error while creating LB HTTPS listener.")
+                                    }
+
+                                    log.success("LB listener created successfully.")
+                                    log.info("Creating service now.")
+
+                                    def isServiceCreated = awsHelper.createECSService(service, "${env.CLUSTER_NAME}", taskFamily,
+                                            1, "${tgArn}", taskName, 8080, "${env.ICM_AWS_DEFAULT_REGION}")
+
+                                    if (isServiceCreated != 0) {
+                                        currentBuild.result = 'FAILED'
+                                        error("Error while creating service. Marking the status of build FAILED.")
+                                    }
+                                    log.success("Service created successfully. Waiting for service to be stable.")
+                                    ecs.wait("${env.CLUSTER_NAME}", service, "${env.ICM_AWS_DEFAULT_REGION}")
+                                    log.success("Deployment done.")
+                                }
+
+
+                            } else {
+
+                                // Deploy to ECS cluster
+                                log.info("Deploying to ECS cluster...")
+                                ecs.deploy("${env.CLUSTER_NAME}", "${env.SERVICE_NAME}", "${env.TASK_FAMILY}", "${env.ECS_IMAGE_TO_DEPLOY}", "${env.ICM_AWS_DEFAULT_REGION}", true)
+                                log.success("Deployed to ECS cluster")
+
+                                // Cloudfront cache invalidation
+                                log.info("Invalidating cloudfront cache")
+                                sh """
+                                /usr/local/bin/aws cloudfront create-invalidation \
+                                    --distribution-id=${env.CF_DIST_ID} \
+                                    --paths "/*"
+                                """
+                                log.success("Cloudfront cache invalidation completed")
+
+                            }
+                            /* Logic ends here */
+
+                            log.success("Deployment completed for global audience")
+                        }
+                        if (env.IS_CHINA == "true" && env.ENVIRONMENT == "prod") {
+                            log.info("Starting deployment for China audience")
+
+                            /* Logic starts here */
+
+                            def remote = [:]
+                            remote.name = "k8-master"
+                            remote.host = "${env.KUBERNETES_MASTER_HOST}"
+                            remote.allowAnyHosts = true
+                            def command = "/usr/bin/kubectl -n production set image deployment www2-deploy www2=${env.DOCKER_HUB_IMAGE_TO_DEPLOY}"
+
+                            log.info("Deploying to kubernetes cluster in Aliyun")
+
+                            withCredentials([sshUserPrivateKey(credentialsId: env.ALIYUN_CRED_ID, keyFileVariable: 'identity', passphraseVariable: '', usernameVariable: 'userName')]) {
+                                remote.user = userName
+                                remote.identityFile = identity
+                                stage("Deploy to Aliyun") {
+                                    sshCommand remote: remote, command: command
+                                }
+                            }
+
+                            log.success("Deployed to kubernetes cluster in Aliyun")
+
+                            /* Logic ends here */
+
+                            log.success("Deployment completed for China audience")
+
+                        }
+                        if (env.IS_RUSSIA == "true" && env.ENVIRONMENT == "prod") {
+                            log.info("Starting deployment for Russia audience")
+
+                            /* Logic starts here */
+
+                            def remote = [:]
+                            remote.name = "croc-cloud"
+                            remote.host = "${env.CROC_SSH_HOST}"
+                            remote.allowAnyHosts = true
+                            def command = """
+                                docker pull ${env.DOCKER_HUB_IMAGE_TO_DEPLOY} && \
+                                    IMAGE_TO_DEPLOY=${env.DOCKER_HUB_IMAGE_TO_DEPLOY} \
+                                    docker stack deploy \
+                                    --compose-file ${env.CROC_DOCKER_COMPOSE_FILE} icm-web
+                            """
+
+                            log.info("Deploying to CROC cloud")
+
+                            withCredentials([sshUserPrivateKey(credentialsId: env.CROC_SSH_ID, keyFileVariable: 'identity', passphraseVariable: '', usernameVariable: 'userName')]) {
+                                remote.user = userName
+                                remote.identityFile = identity
+                                stage("Deploy to CROC cloud") {
+                                    sshCommand remote: remote, command: command
+                                }
+                            }
+
+                            /* Logic ends here */
+
+                            log.success("Deployment completed for Russia audience")
+
+                        }
+                        log.success("Completed Stage 2: Deploy")
+                    } else {
+                        log.info("No platform selected, Skipping deploy.")
+                    }
+                }
+            }
+        }
+    }
+
+    // Post actions
+    post {
+        aborted {
+            script {
+                log.info("###############################")
+                log.info('Build process is aborted')
+                helper.notifySlack("warning", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was aborted.")
+                log.info("###############################")
+            }
+        }
+        failure {
+            script {
+                log.error("#############################")
+                log.error('Build process failed.')
+                helper.notifySlack("danger", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was failed.")
+                log.error("#############################")
+            }
+        }
+        success {
+            script {
+                log.success("#################################################")
+                log.success('Build process completed successfully.')
+                log.success("#################################################")
+                if (env.IS_DEV_ENV == "true") {
+                    log.success("Endpoint: ${env.SITE_HOST}")
+                    helper.notifySlack("good", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was successful.\n URL: ${env.SITE_HOST}")
+                    log.success("#################################################")
+                } else {
+                    helper.notifySlack("good", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was successful.")
+                }
+            }
+        }
+    }
+}
+
