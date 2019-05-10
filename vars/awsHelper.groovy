@@ -5,7 +5,7 @@
 * */
 def isECSServiceExists(cluster, service, region) {
     return sh(returnStatus: true, script: """
-                        /usr/local/bin/aws ecs list-services \
+                        /usr/bin/aws ecs list-services \
                         --cluster ${cluster}  \
                         --region ${region} \
                         --output text | \
@@ -20,7 +20,7 @@ def isECSServiceExists(cluster, service, region) {
 * */
 def registerTaskDefinition(taskFamily, taskName, memoryReservation, image, tag, containerPort, region) {
     return sh(returnStatus: true, script: """
-                            /usr/local/bin/aws ecs register-task-definition --network-mode bridge \
+                            /usr/bin/aws ecs register-task-definition --network-mode bridge \
                             --family ${taskFamily} \
                             --container-definitions '[{"name":"${taskName}", \
                                                     "image":"${image}", \
@@ -46,7 +46,7 @@ def createTargetGroup(name,
                       healthCheckSuccessCode,
                       region) {
     return sh(returnStdout: true, script: """
-                                /usr/local/bin/aws elbv2 create-target-group \
+                                /usr/bin/aws elbv2 create-target-group \
                                 --name ${name} \
                                 --protocol HTTP \
                                 --port ${port} \
@@ -69,7 +69,7 @@ def createTargetGroup(name,
 * */
 def modifyTargetGroupAttr(tgArn, deRegDelay, region) {
     return sh(returnStatus: true, script: """
-                                /usr/local/bin/aws elbv2 modify-target-group-attributes \
+                                /usr/bin/aws elbv2 modify-target-group-attributes \
                                 --target-group-arn ${tgArn} \
                                 --attributes 'Key=deregistration_delay.timeout_seconds,Value=${deRegDelay}' \
                                 --region ${region}
@@ -83,7 +83,7 @@ def modifyTargetGroupAttr(tgArn, deRegDelay, region) {
 * */
 def getNextALBRulePriority(listenerArn, region) {
     return sh(returnStdout: true, script: """
-                            /usr/local/bin/aws elbv2 describe-rules \
+                            /usr/bin/aws elbv2 describe-rules \
                             --listener-arn ${listenerArn} \
                             --region ${region} | \
                             jq -r '[.Rules[].Priority][0:-1] | map(.|tonumber) | max + 1'
@@ -97,7 +97,7 @@ def getNextALBRulePriority(listenerArn, region) {
 * */
 def createALBListenerRule(listenerArn, priority, host, targetGroupArn, region) {
     return sh(returnStatus: true, script: """
-                                    /usr/local/bin/aws elbv2 create-rule \
+                                    /usr/bin/aws elbv2 create-rule \
                                     --listener-arn ${listenerArn} \
                                     --priority ${priority} \
                                     --conditions Field=host-header,Values='"${host}"' \
@@ -113,7 +113,7 @@ def createALBListenerRule(listenerArn, priority, host, targetGroupArn, region) {
 * */
 def createECSService(name, cluster, taskFamily, desiredCount, taskName, containerPort, region) {
     sh(returnStatus: true, script: """
-                                /usr/local/bin/aws ecs create-service \
+                                /usr/bin/aws ecs create-service \
                                 --service-name ${name} \
                                 --launch-type EC2 \
                                 --cluster ${cluster} \
@@ -129,7 +129,7 @@ def createECSService(name, cluster, taskFamily, desiredCount, taskName, containe
 * */
 def getListenerRuleArn(listenerArn, host, region) {
     return sh(returnStdout: true, script: """
-                                    /usr/local/bin/aws elbv2 describe-rules \
+                                    /usr/bin/aws elbv2 describe-rules \
                                     --listener-arn  ${listenerArn} \
                                     --region ${region} | \
                                     jq -r '[.Rules[]][] | select(.Conditions[].Values[]=="${host}") | .RuleArn'
@@ -141,7 +141,7 @@ def getListenerRuleArn(listenerArn, host, region) {
 * */
 def deleteListenerRule(ruleArn, region) {
     return sh(returnStatus: true, script: """
-                                    /usr/local/bin/aws elbv2 delete-rule \
+                                    /usr/bin/aws elbv2 delete-rule \
                                     --rule-arn ${ruleArn} \
                                     --region ${region}
                                 """)
@@ -152,7 +152,7 @@ def deleteListenerRule(ruleArn, region) {
 * */
 def getTargetGroupArn(listenerArn, host, region) {
     return sh(returnStdout: true, script: """
-                                    /usr/local/bin/aws elbv2 describe-rules \
+                                    /usr/bin/aws elbv2 describe-rules \
                                     --listener-arn  ${listenerArn} \
                                     --region ${region} | \
                                     jq -r '[.Rules[]][] | select(.Conditions[].Values[]=="${host}") | .Actions[0].TargetGroupArn'
@@ -164,7 +164,7 @@ def getTargetGroupArn(listenerArn, host, region) {
 * */
 def deleteTargetGroup(tgArn, region) {
     return sh(returnStatus: true, script: """
-                                    /usr/local/bin/aws elbv2 delete-target-group \
+                                    /usr/bin/aws elbv2 delete-target-group \
                                     --target-group-arn ${tgArn} \
                                     --region ${region}
                                 """)
@@ -175,7 +175,7 @@ def deleteTargetGroup(tgArn, region) {
 * */
 def deleteECSService(name, cluster, region) {
     sh(returnStatus: true, script: """
-                                /usr/local/bin/aws ecs delete-service \
+                                /usr/bin/aws ecs delete-service \
                                 --service ${name} \
                                 --cluster ${cluster} \
                                 --force \
@@ -188,7 +188,7 @@ def deleteECSService(name, cluster, region) {
 * */
 def deregisterTaskDefinition(taskName, tag, region) {
     return sh(returnStatus: true, script: """
-                           /usr/local/bin/aws ecs deregister-task-definition \
+                           /usr/bin/aws ecs deregister-task-definition \
 			   --task-definition ${taskName}:${tag} \
                            --region ${region}
                        """)
