@@ -87,7 +87,7 @@ pipeline {
                                     //log.info("Creating service now.")
 
                                     def isServiceCreated = awsHelper.createECSService(service, "${env.CLUSTER_NAME}", taskFamily,
-                                            1, "${tgArn}", taskName, 80, "${REGION}")
+                                            1, taskName, 80, "${REGION}")
 
                                     if (isServiceCreated != 0) {
                                         currentBuild.result = 'FAILED'
