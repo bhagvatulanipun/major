@@ -111,7 +111,7 @@ def createALBListenerRule(listenerArn, priority, host, targetGroupArn, region) {
 *
 * @return exit status
 * */
-def createECSService(name, cluster, taskFamily, desiredCount, tgArn, taskName, containerPort, region) {
+def createECSService(name, cluster, taskFamily, desiredCount, taskName, containerPort, region) {
     sh(returnStatus: true, script: """
                                 /usr/local/bin/aws ecs create-service \
                                 --service-name ${name} \
@@ -119,9 +119,6 @@ def createECSService(name, cluster, taskFamily, desiredCount, tgArn, taskName, c
                                 --cluster ${cluster} \
                                 --task-definition ${taskFamily} \
                                 --desired-count ${desiredCount} \
-                                --load-balancers '[{"targetGroupArn":"${tgArn}", \
-                                                "containerName":"${taskName}", \
-                                                "containerPort":${containerPort}}]' \
                                 --role ecsServiceRole \
                                 --region ${region}
                             """)
