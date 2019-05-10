@@ -64,7 +64,7 @@ pipeline {
                                 def service = "major-app-svc"
                                 def taskFamily = "major-app-td"
                                 def taskName = "major-app-td"
-
+                                def networkMode = "bridge"
                                 def isServiceExists = awsHelper.isECSServiceExists("${env.CLUSTER_NAME}", service, "${REGION}")
 
                                 if (isServiceExists == 0) {
@@ -75,7 +75,7 @@ pipeline {
                                 } else {
                                     //log.info("New branch setup: Creating task definition now")
 
-                                    def isTaskDefCreated = awsHelper.registerTaskDefinition(taskFamily, taskName,
+                                    def isTaskDefCreated = awsHelper.registerTaskDefinition(networkMode, taskFamily, taskName,
                                             512, "${env.ECS_IMAGE_TO_DEPLOY}", "1", 80, "${REGION}")
 
                                     if (isTaskDefCreated != 0) {
