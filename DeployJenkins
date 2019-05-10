@@ -42,7 +42,7 @@ pipeline {
         stage('Clean workspace') {
             steps {
                 script {
-                    log.info("Executing Stage 1: Clean workspace")
+                    //log.info("Executing Stage 1: Clean workspace")
 
                     /* Logic starts here */
 
@@ -50,7 +50,7 @@ pipeline {
 
                     /* Logic ends here */
 
-                    log.success("Completed Stage 1: Clean workspace")
+                    //log.success("Completed Stage 1: Clean workspace")
                 }
             }
         }
@@ -59,7 +59,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                        log.info("Executing Stage 2: Deploy")
+                        //log.info("Executing Stage 2: Deploy")
                             /* Logic starts here */
                                 def service = "major-app-svc"
                                 def taskFamily = "major-app-td"
@@ -68,39 +68,39 @@ pipeline {
                                 def isServiceExists = awsHelper.isECSServiceExists("${env.CLUSTER_NAME}", service, "${REGION}")
 
                                 if (isServiceExists == 0) {
-                                    log.info("Service already exists, No need to create stack.")
-                                    log.info("Deploying now...")
+                                    //log.info("Service already exists, No need to create stack.")
+                                    //log.info("Deploying now...")
                                     ecs.deploy("${env.CLUSTER_NAME}", service, taskFamily, "${env.ECS_IMAGE_TO_DEPLOY}", "${REGION}", true)
-                                    log.success("Deployment done.")
+                                    //log.success("Deployment done.")
                                 } else {
-                                    log.info("New branch setup: Creating task definition now")
+                                    //log.info("New branch setup: Creating task definition now")
 
                                     def isTaskDefCreated = awsHelper.registerTaskDefinition(taskFamily, taskName,
                                             512, "${env.ECS_IMAGE_TO_DEPLOY}", "1", 80, "${REGION}")
 
                                     if (isTaskDefCreated != 0) {
                                         currentBuild.result = 'FAILED'
-                                        error("Error while creating TaskDefinition.")
+                                        //error("Error while creating TaskDefinition.")
                                     }
 
-                                    log.success("TaskDefinition created successfully.")
-                                    log.info("Creating service now.")
+                                    //log.success("TaskDefinition created successfully.")
+                                    //log.info("Creating service now.")
 
                                     def isServiceCreated = awsHelper.createECSService(service, "${env.CLUSTER_NAME}", taskFamily,
                                             1, "${tgArn}", taskName, 80, "${REGION}")
 
                                     if (isServiceCreated != 0) {
                                         currentBuild.result = 'FAILED'
-                                        error("Error while creating service. Marking the status of build FAILED.")
+                                       // error("Error while creating service. Marking the status of build FAILED.")
                                     }
-                                    log.success("Service created successfully. Waiting for service to be stable.")
+                                    //log.success("Service created successfully. Waiting for service to be stable.")
                                     ecs.wait("${env.CLUSTER_NAME}", service, "${REGION}")
-                                    log.success("Deployment done.")
+                                    //log.success("Deployment done.")
                                 }
 
                                  /* Logic ends here */
 
-                            log.success("Deployment completed for global audience")
+                            //log.success("Deployment completed for global audience")
                             }
                             
                         }
@@ -110,25 +110,25 @@ pipeline {
     post {
         aborted {
             script {
-                log.info("###############################")
-                log.info('Build process is aborted')
-                helper.notifySlack("warning", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was aborted.")
-                log.info("###############################")
+                //log.info("###############################")
+                //log.info('Build process is aborted')
+                //helper.notifySlack("warning", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was aborted.")
+                //log.info("###############################")
             }
         }
         failure {
             script {
-                log.error("#############################")
-                log.error('Build process failed.')
-                helper.notifySlack("danger", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was failed.")
-                log.error("#############################")
+                //log.error("#############################")
+                //log.error('Build process failed.')
+                //helper.notifySlack("danger", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was failed.")
+                //log.error("#############################")
             }
         }
         success {
             script {
-                log.success("#################################################")
-                log.success('Build process completed successfully.')
-                log.success("#################################################")
+                //log.success("#################################################")
+                //log.success('Build process completed successfully.')
+                //log.success("#################################################")
                 }
         }
     }  
