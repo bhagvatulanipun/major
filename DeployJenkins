@@ -110,6 +110,7 @@ pipeline {
     post {
         aborted {
             script {
+                 println("aborted")
                 //log.info("###############################")
                 //log.info('Build process is aborted')
                 //helper.notifySlack("warning", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was aborted.")
@@ -118,6 +119,7 @@ pipeline {
         }
         failure {
             script {
+                  println("failed")
                 //log.error("#############################")
                 //log.error('Build process failed.')
                 //helper.notifySlack("danger", "Job: ${env.JOB_NAME} with buildnumber ${env.BUILD_NUMBER} was failed.")
@@ -126,6 +128,7 @@ pipeline {
         }
         success {
             script {
+                  println("success")
                 //log.success("#################################################")
                 //log.success('Build process completed successfully.')
                 //log.success("#################################################")
