@@ -29,11 +29,11 @@ pipeline {
 
         // dev config
         VPC = "vpc-00e339dc940810ab5"
-        ALB_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:loadbalancer/app/icm-dev-lb/02aa38573ac93bed"
-        DEV_ALB_HTTP_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/2c8b1efb4e0c4dc2"
-        DEV_ALB_HTTPS_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/f777b76b6ff73aae"
-        LOAD_BALANCER = "major-app-lb"
-        TARGET_GROUP = "major-app-tg"
+        //ALB_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:loadbalancer/app/icm-dev-lb/02aa38573ac93bed"
+ //       DEV_ALB_HTTP_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/2c8b1efb4e0c4dc2"
+   //     DEV_ALB_HTTPS_LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-west-2:466803351965:listener/app/icm-dev-lb/02aa38573ac93bed/f777b76b6ff73aae"
+     //   LOAD_BALANCER = "major-app-lb"
+       // TARGET_GROUP = "major-app-tg"
 
     }
 
@@ -86,47 +86,6 @@ pipeline {
                                     }
 
                                     log.success("TaskDefinition created successfully.")
-                                    log.info("Creating TargetGroup now.")
-
-                                    def tgArn = awsHelper.createTargetGroup("${env.TARGET_GROUP}", "${env.VPC}", 80,
-                                            "/", 15, 2, 2, 200, "${REGION}")
-
-                                    if (tgArn == "") {
-                                        currentBuild.result = 'FAILED'
-                                        error("Error while creating TargetGroup.")
-                                    }
-
-                                    log.success("TargetGroup created successfully.")
-                                    log.info("Modifying TG attributes")
-
-                                    def isModifiedTgAttr = awsHelper.modifyTargetGroupAttr("${tgArn}", 30, "${REGION}")
-
-                                    if (isModifiedTgAttr != 0) {
-                                        currentBuild.result = 'FAILED'
-                                        error("Error while modifying TargetGroup attributes.")
-                                    }
-
-                                    log.success("TargetGroup attributes modified successfully.")
-                                    log.info("Creating LB listener now.")
-
-                                    def priority = awsHelper.getNextALBRulePriority("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${REGION}")
-
-                                    def isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTP_LISTENER_ARN}", "${priority}", "nipun-major.ml", "${tgArn}", "${REGION}")
-
-
-                                    if (isListenerRuleCreated != 0) {
-                                        currentBuild.result = 'FAILED'
-                                        error("Error while creating LB HTTP listener.")
-                                    }
-
-                                    isListenerRuleCreated = awsHelper.createALBListenerRule("${env.DEV_ALB_HTTPS_LISTENER_ARN}", "${priority}", "${nipun-major.ml}", "${tgArn}", "${REGION}")
-
-                                    if (isListenerRuleCreated != 0) {
-                                        currentBuild.result = 'FAILED'
-                                        error("Error while creating LB HTTPS listener.")
-                                    }
-
-                                    log.success("LB listener created successfully.")
                                     log.info("Creating service now.")
 
                                     def isServiceCreated = awsHelper.createECSService(service, "${env.CLUSTER_NAME}", taskFamily,
