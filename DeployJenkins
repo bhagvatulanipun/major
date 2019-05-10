@@ -1,5 +1,3 @@
-
-
 /*
 * Jenkins shared library
 */
@@ -100,11 +98,11 @@ pipeline {
                                     log.success("Deployment done.")
                                 }
 
-
-                            }
-                            /* Logic ends here */
+                                 /* Logic ends here */
 
                             log.success("Deployment completed for global audience")
+                            }
+                            
                         }
                    }     
         }
