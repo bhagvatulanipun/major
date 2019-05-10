@@ -1,4 +1,4 @@
- }#!groovy
+ #!groovy
 
 /*
 * Jenkins shared library
@@ -106,7 +106,7 @@ pipeline {
 
                             log.success("Deployment completed for global audience")
                         }
-                        
+                   }     
         }
     // Post actions
     post {
@@ -135,4 +135,3 @@ pipeline {
         }
     }  
 }
-
